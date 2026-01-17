@@ -1227,6 +1227,7 @@ voodoo_card_init(void)
     voodoo->fifo_not_full_event      = thread_create_event();
     voodoo->fifo_empty_event         = thread_create_event();
     thread_set_event(voodoo->fifo_empty_event);
+    ATOMIC_STORE(voodoo->fifo_empty_signaled, 1);
     voodoo->render_not_full_event[0] = thread_create_event();
     voodoo->render_not_full_event[1] = thread_create_event();
     voodoo->render_not_full_event[2] = thread_create_event();
@@ -1359,6 +1360,7 @@ voodoo_2d3d_card_init(int type)
     voodoo->fifo_not_full_event      = thread_create_event();
     voodoo->fifo_empty_event         = thread_create_event();
     thread_set_event(voodoo->fifo_empty_event);
+    ATOMIC_STORE(voodoo->fifo_empty_signaled, 1);
     voodoo->render_not_full_event[0] = thread_create_event();
     voodoo->render_not_full_event[1] = thread_create_event();
     voodoo->render_not_full_event[2] = thread_create_event();
