@@ -209,7 +209,15 @@ voodoo_queue_command(voodoo_t *voodoo, uint32_t addr_type, uint32_t val)
         voodoo->fifo_full_spin_checks += fifo_wait_spins;
     }
 
+#ifdef _WIN32
+    /* Reset only after an empty signal to avoid heavy ResetEvent churn on Windows. */
+    if (ATOMIC_LOAD(voodoo->fifo_empty_signaled)) {
+        ATOMIC_STORE(voodoo->fifo_empty_signaled, 0);
+        thread_reset_event(voodoo->fifo_empty_event);
+    }
+#else
     thread_reset_event(voodoo->fifo_empty_event);
+#endif
 
     fifo->val        = val;
     fifo->addr_type  = addr_type;
@@ -470,6 +478,7 @@ voodoo_fifo_thread(void *param)
         voodoo->cmd_status |= (1 << 24);
         voodoo->cmd_status_2 |= (1 << 24);
         thread_set_event(voodoo->fifo_empty_event);
+        ATOMIC_STORE(voodoo->fifo_empty_signaled, 1);
 
         while (voodoo->cmdfifo_enabled && (voodoo->cmdfifo_depth_rd != voodoo->cmdfifo_depth_wr || voodoo->cmdfifo_in_sub)) {
             uint64_t start_time = plat_timer_read();
