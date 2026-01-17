@@ -366,6 +366,7 @@ typedef struct voodoo_t {
     event_t  *wake_main_thread;
     event_t  *fifo_not_full_event;
     event_t  *fifo_empty_event;
+    ATOMIC_INT fifo_empty_signaled;
     event_t  *render_not_full_event[4];
     event_t  *wake_render_thread[4];
 
