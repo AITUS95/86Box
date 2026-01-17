@@ -12,7 +12,7 @@
 #
 #          Copyright 2020-2021 David Hrdlička.
 #          Copyright 2021-2025 Jasmine Iwanek.
-#
+# 
 
 cmake_minimum_required(VERSION 3.16)
 
