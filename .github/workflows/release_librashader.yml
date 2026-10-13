@@ -1,0 +1,150 @@
+name: Fork release - Windows x64 (static librashader)
+
+# Isolated release workflow: it does not change existing CI or Actions artifacts.
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/release_librashader.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release-v7.0-librashader-20261013
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      RELEASE_TAG: v7.0-librashader-20261013
+      LIBRASHADER_COMMIT: f810cdf6e856e5a5215b1e84a21c978bc3367f23
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Check that the release does not already exist
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $existing = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $env:RELEASE_TAG already exists; refusing to overwrite it."
+          }
+
+      - name: Configure MSYS2 mirrors and slow downloads
+        shell: pwsh
+        run: |
+          $mirrorDir = 'C:\msys64\etc\pacman.d'
+          if (-not (Test-Path $mirrorDir)) { throw 'Preinstalled MSYS2 was not found' }
+          Set-Content -Path (Join-Path $mirrorDir 'mirrorlist.mingw') -Encoding ascii -Value 'Server = https://repo.msys2.org/mingw/$repo'
+          Set-Content -Path (Join-Path $mirrorDir 'mirrorlist.msys') -Encoding ascii -Value 'Server = https://repo.msys2.org/msys/$arch'
+          $configPath = 'C:\msys64\etc\pacman.conf'
+          $config = Get-Content -Path $configPath -Raw
+          if ($config -notmatch '(?m)^DisableDownloadTimeout[ \t]*$') {
+            $config = $config -replace '(?m)^\[options\][ \t]*$', ('[options]' + [Environment]::NewLine + 'DisableDownloadTimeout')
+            Set-Content -Path $configPath -Encoding ascii -Value $config
+          }
+
+      - name: Prepare MSYS2 / UCRT64
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        with:
+          release: false
+          update: true
+          msystem: UCRT64
+          pacboy: >-
+            ninja:p
+            cmake:p
+            gcc:p
+            pkgconf:p
+            freetype:p
+            sdl3:p
+            zlib:p
+            libpng:p
+            openal:p
+            rtmidi:p
+            libslirp:p
+            fluidsynth:p
+            libserialport:p
+            qt5-static:p
+            vulkan-headers:p
+            libsndfile:p
+            llvm-openmp:p
+            zstd:p
+            rust:p
+            rust-src:p
+            cargo-c:p
+            make:p
+
+      - name: Check out the fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Compile librashader static library (same revision as Jenkins)
+        run: |
+          set -e
+          mkdir librashader-src
+          git -C librashader-src init
+          git -C librashader-src remote add origin https://github.com/SnowflakePowered/librashader.git
+          git -C librashader-src fetch --depth=1 origin "$LIBRASHADER_COMMIT"
+          git -C librashader-src checkout --detach FETCH_HEAD
+          export RUSTFLAGS="-C target-feature=+crt-static"
+          cd librashader-src
+          cargo build -p librashader-capi --release --no-default-features --features runtime-vulkan
+          test -s target/release/liblibrashader_capi.a
+
+      - name: Configure release build (static librashader)
+        run: |
+          set -e
+          cmake -S . -B release-build --preset regular \
+            -D QT=ON \
+            -D STATIC_BUILD=ON \
+            -D NEW_DYNAREC=OFF \
+            -D LIBRASHADER=ON \
+            -D LIBRASHADER_STATIC=ON \
+            -D LIBRASHADER_STATIC_FIND_LIB=ON \
+            -D "LIBRASHADER_STATIC_LIB=$(pwd)/librashader-src/target/release/liblibrashader_capi.a" \
+            -D "CMAKE_INSTALL_PREFIX=$(pwd)/release-stage"
+          grep -q '^LIBRASHADER_STATIC:BOOL=ON$' release-build/CMakeCache.txt
+          grep -q '^LIBRASHADER_STATIC_FIND_LIB:BOOL=ON$' release-build/CMakeCache.txt
+
+      - name: Compile and install release
+        run: |
+          set -e
+          cmake --build release-build --parallel 4
+          cmake --install release-build
+          test -s release-stage/86Box.exe
+
+      - name: Package and publish GitHub Release (not an Actions artifact)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP '86Box-7.0-Windows-x64-librashader-static.zip'
+          Compress-Archive -Path 'release-stage\*' -DestinationPath $archive -CompressionLevel Optimal
+          if (-not (Test-Path $archive) -or (Get-Item $archive).Length -lt 1000000) {
+            throw 'Release ZIP is missing or unexpectedly small.'
+          }
+
+          $notes = @'
+          86Box 7.0 development snapshot from AITUS95/86Box, Windows x64 (UCRT64).
+
+          librashader is linked statically into 86Box.exe (no librashader.dll needed),
+          using the same librashader source revision and static-build approach as Jenkins.
+
+          The changes from upstream PR 86Box/86Box#8275 remain reverted in this fork.
+
+          This standalone Release ZIP is separate from GitHub Actions build artifacts.
+          Existing artifacts and existing CI workflows are not modified.
+          This is an unofficial fork build, not an official upstream 86Box release.
+          '@
+
+          gh release create $env:RELEASE_TAG $archive --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '86Box 7.0 fork - Windows x64 with static librashader' --notes $notes --prerelease
