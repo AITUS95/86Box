@@ -49,6 +49,7 @@ jobs:
           release: false
           update: true
           msystem: UCRT64
+          install: git
           pacboy: >-
             ninja:p
             cmake:p
