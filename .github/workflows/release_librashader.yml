@@ -29,16 +29,6 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - name: Check that the release does not already exist
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $existing = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json tagName 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            throw "Release $env:RELEASE_TAG already exists; refusing to overwrite it."
-          }
-
       - name: Configure MSYS2 mirrors and slow downloads
         shell: pwsh
         run: |
