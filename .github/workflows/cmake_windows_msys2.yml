@@ -90,10 +90,24 @@ jobs:
               msystem: CLANGARM64
 
     steps:
+      - name: Prefer primary MSYS2 mirror and allow slow downloads
+        shell: pwsh
+        run: |
+          # GitHub-hosted Windows runners include MSYS2 at C:\msys64.
+          $mirrorDir = 'C:\msys64\etc\pacman.d'
+          if (-not (Test-Path $mirrorDir)) { throw 'Preinstalled MSYS2 was not found' }
+          Set-Content -Path (Join-Path $mirrorDir 'mirrorlist.mingw') -Encoding ascii -Value 'Server = https://repo.msys2.org/mingw/$repo'
+          Set-Content -Path (Join-Path $mirrorDir 'mirrorlist.msys') -Encoding ascii -Value 'Server = https://repo.msys2.org/msys/$arch'
+          $configPath = 'C:\msys64\etc\pacman.conf'
+          $config = Get-Content -Path $configPath -Raw
+          if ($config -notmatch '(?m)^DisableDownloadTimeout[ \t]*$') {
+            $config = $config -replace '(?m)^\[options\][ \t]*$', "[options]`r`nDisableDownloadTimeout"
+            Set-Content -Path $configPath -Encoding ascii -Value $config
+          }
       - name: Prepare MSYS2 environment
         uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 #v2.32.0
         with:
-          release: true
+          release: false  # Use the preconfigured MSYS2 provided by the runner.
           update: true
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
