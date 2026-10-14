@@ -159,11 +159,9 @@ jobs:
           gh api -X PATCH "repos/$repo/releases/assets/$($candidate.id)" -f "name=$stableName" | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Could not rename the new release asset.' }
 
-          # The build is complete and the replacement asset is in place.
-          # Update the existing lightweight tag; do not touch master or Actions artifacts.
-          gh api -X PATCH "repos/$repo/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=true | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to update prerelease tag.' }
-
+          # The existing release tag cannot be force-moved with GITHUB_TOKEN:
+          # GitHub responds with HTTP 403 even though asset uploads succeed.
+          # Keep the established release URL and update metadata with the build SHA.
           $notes = @'
           86Box 7.0 development snapshot from AITUS95/86Box, Windows x64 (UCRT64).
 
@@ -176,10 +174,19 @@ jobs:
           This is an unofficial fork build, not an official upstream 86Box release.
           '@
 
+          # The tag continues to reference the original snapshot; the release
+          # asset is the current build. Record its exact source commit explicitly.
+          $notes += "`n`nWindows x64 ZIP build commit: $env:GITHUB_SHA"
+          $notes += "`nThe Git tag is retained for the stable release URL; download the attached ZIP for the updated binary."
+
           gh release edit $tag --repo $repo --target $env:GITHUB_SHA --notes $notes --prerelease
           if ($LASTEXITCODE -ne 0) { throw 'Failed to update release metadata.' }
-          $confirmedSha = gh api "repos/$repo/git/ref/tags/$tag" --jq '.object.sha'
-          if ($LASTEXITCODE -ne 0 -or $confirmedSha -ne $env:GITHUB_SHA) {
-            throw 'Updated tag does not point at the release build commit.'
+          $confirmedRelease = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $confirmedRelease.target_commitish -ne $env:GITHUB_SHA) {
+            throw 'Release metadata does not match this build commit.'
           }
-          Write-Host "Updated prerelease $tag to $confirmedSha with $stableName"
+          $confirmedZip = $confirmedRelease.assets | Where-Object { $_.name -eq $stableName } | Select-Object -First 1
+          if (-not $confirmedZip -or $confirmedZip.size -lt 1000000) {
+            throw 'The final release archive is not available.'
+          }
+          Write-Host "Updated prerelease $tag: build $env:GITHUB_SHA, asset $stableName"
