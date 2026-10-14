@@ -114,20 +114,60 @@ jobs:
           cmake --install release-build
           test -s release-stage/86Box.exe
 
-      - name: Package and publish GitHub Release (not an Actions artifact)
+      - name: Package and update existing GitHub prerelease (not an Actions artifact)
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP '86Box-7.0-Windows-x64-librashader-static.zip'
+          $ErrorActionPreference = 'Stop'
+          $repo = $env:GITHUB_REPOSITORY
+          $tag = $env:RELEASE_TAG
+          $stableName = '86Box-7.0-Windows-x64-librashader-static.zip'
+          $candidateName = "86Box-7.0-Windows-x64-librashader-static-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.zip"
+          $archive = Join-Path $env:RUNNER_TEMP $candidateName
+
+          # Do not change or remove the published archive if compilation fails.
           Compress-Archive -Path 'release-stage\*' -DestinationPath $archive -CompressionLevel Optimal
           if (-not (Test-Path $archive) -or (Get-Item $archive).Length -lt 1000000) {
             throw 'Release ZIP is missing or unexpectedly small.'
           }
 
+          $release = gh api "repos/$repo/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $release.id) { throw 'Existing prerelease not found.' }
+          $tagSha = gh api "repos/$repo/git/ref/tags/$tag" --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing tag.' }
+          if ($tagSha -ne '6256918b88ccf253e9262c3182f86b501490fbdd') {
+            throw "Existing tag has changed ($tagSha); refusing to overwrite it."
+          }
+
+          # Upload with a unique temporary name first, leaving the original ZIP
+          # untouched until the new one is safely stored on the release.
+          gh release upload $tag $archive --repo $repo
+          if ($LASTEXITCODE -ne 0) { throw 'Uploading the candidate release asset failed.' }
+
+          $assets = @(gh api "repos/$repo/releases/$($release.id)/assets" | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect uploaded assets.' }
+          $candidate = $assets | Where-Object { $_.name -eq $candidateName } | Select-Object -First 1
+          $previous = $assets | Where-Object { $_.name -eq $stableName } | Select-Object -First 1
+          if (-not $candidate -or $candidate.size -lt 1000000 -or $candidate.state -ne 'uploaded') {
+            throw 'New release asset was not uploaded correctly; existing asset preserved.'
+          }
+          if (-not $previous) { throw 'Existing release asset was not found; refusing to replace it.' }
+
+          gh api -X DELETE "repos/$repo/releases/assets/$($previous.id)"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not remove the old release asset.' }
+          gh api -X PATCH "repos/$repo/releases/assets/$($candidate.id)" -f "name=$stableName" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not rename the new release asset.' }
+
+          # The build is complete and the replacement asset is in place.
+          # Update the existing lightweight tag; do not touch master or Actions artifacts.
+          gh api -X PATCH "repos/$repo/git/refs/tags/$tag" -f "sha=$env:GITHUB_SHA" -F force=true | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to update prerelease tag.' }
+
           $notes = @'
           86Box 7.0 development snapshot from AITUS95/86Box, Windows x64 (UCRT64).
 
+          Updated to the latest fork master, including the October 14 upstream sync.
           librashader is linked statically into 86Box.exe (no librashader.dll needed),
           using the same librashader source revision and static-build approach as Jenkins.
 
@@ -138,4 +178,10 @@ jobs:
           This is an unofficial fork build, not an official upstream 86Box release.
           '@
 
-          gh release create $env:RELEASE_TAG $archive --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '86Box 7.0 fork - Windows x64 with static librashader' --notes $notes --prerelease
+          gh release edit $tag --repo $repo --target $env:GITHUB_SHA --notes $notes --prerelease
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to update release metadata.' }
+          $confirmedSha = gh api "repos/$repo/git/ref/tags/$tag" --jq '.object.sha'
+          if ($LASTEXITCODE -ne 0 -or $confirmedSha -ne $env:GITHUB_SHA) {
+            throw 'Updated tag does not point at the release build commit.'
+          }
+          Write-Host "Updated prerelease $tag to $confirmedSha with $stableName"
