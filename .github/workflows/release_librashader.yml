@@ -136,7 +136,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $release.id) { throw 'Existing prerelease not found.' }
           $tagSha = gh api "repos/$repo/git/ref/tags/$tag" --jq '.object.sha'
           if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing tag.' }
-          if ($tagSha -ne '6256918b88ccf253e9262c3182f86b501490fbdd') {
+          if ($tagSha -ne '204e037e1929017eca2d68ae5245e412eb1c2a22') {
             throw "Existing tag has changed ($tagSha); refusing to overwrite it."
           }
 
@@ -167,11 +167,9 @@ jobs:
           $notes = @'
           86Box 7.0 development snapshot from AITUS95/86Box, Windows x64 (UCRT64).
 
-          Updated to the latest fork master, including the October 14 upstream sync.
+          Updated build of the fork for Windows x64.
           librashader is linked statically into 86Box.exe (no librashader.dll needed),
           using the same librashader source revision and static-build approach as Jenkins.
-
-          The changes from upstream PR 86Box/86Box#8275 remain reverted in this fork.
 
           This standalone Release ZIP is separate from GitHub Actions build artifacts.
           Existing artifacts and existing CI workflows are not modified.
