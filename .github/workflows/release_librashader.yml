@@ -6,7 +6,7 @@ on:
   push:
     branches: [master]
     paths:
-      - ".github/workflows/release_librashader.yml"
+      - '.github/workflows/release_librashader.yml'
 
 permissions:
   contents: write
