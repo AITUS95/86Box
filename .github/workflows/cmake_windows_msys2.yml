@@ -39,7 +39,7 @@ jobs:
         shell: msys2 {0}
 
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         build:
 #          - name: Regular
@@ -111,6 +111,7 @@ jobs:
         with:
           release: false  # Use the preconfigured MSYS2 provided by the runner.
           update: true
+          cache: false  # Skip paccache cleanup, which may fail on preinstalled ARM64 MSYS2.
           msystem: ${{ matrix.environment.msystem }}
           pacboy: >-
             ninja:p
