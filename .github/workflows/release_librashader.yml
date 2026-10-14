@@ -1,6 +1,6 @@
 name: Fork release - Windows x64 (static librashader)
 
-# Isolated release workflow: it does not change existing CI or Actions artifacts.
+# Isolated release workflow: rebuild the current fork master as a prerelease.
 on:
   workflow_dispatch:
   push:
