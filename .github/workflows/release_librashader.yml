@@ -189,4 +189,4 @@ jobs:
           if (-not $confirmedZip -or $confirmedZip.size -lt 1000000) {
             throw 'The final release archive is not available.'
           }
-          Write-Host "Updated prerelease $tag: build $env:GITHUB_SHA, asset $stableName"
+          Write-Host ("Updated prerelease {0}: build {1}, asset {2}" -f $tag, $env:GITHUB_SHA, $stableName)
