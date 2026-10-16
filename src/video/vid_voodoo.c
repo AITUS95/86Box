@@ -259,11 +259,12 @@ voodoo_readw(uint32_t addr, void *priv)
                 int pending_unknown = 0;
 
                 if (read_buf >= 0 && read_buf < VOODOO_BUF_COUNT) {
-                    /* Work queued for the buffer being read must always force a sync.
-                       The relax flags only relax the unknown-target heuristic below; they
-                       must not suppress writes aimed at this buffer, or a back-buffer read
-                       races queued draw commands and returns stale data. */
-                    pending_buf += voodoo->pending_fb_writes_buf[read_buf];
+                    /* Queued draw commands always force a sync, or the read can
+                       return stale data. The guest's own LFB writes to this buffer
+                       take the relaxed path: its SST_status poll already waits
+                       for the ring to drain. */
+                    if (!voodoo->lfb_relax_ignore_fb_writes)
+                        pending_buf += voodoo->pending_fb_writes_buf[read_buf];
                     pending_buf += voodoo->pending_draw_cmds_buf[read_buf];
                 }
 
@@ -363,11 +364,12 @@ voodoo_readl(uint32_t addr, void *priv)
                 int pending_unknown = 0;
 
                 if (read_buf >= 0 && read_buf < VOODOO_BUF_COUNT) {
-                    /* Work queued for the buffer being read must always force a sync.
-                       The relax flags only relax the unknown-target heuristic below; they
-                       must not suppress writes aimed at this buffer, or a back-buffer read
-                       races queued draw commands and returns stale data. */
-                    pending_buf += voodoo->pending_fb_writes_buf[read_buf];
+                    /* Queued draw commands always force a sync, or the read can
+                       return stale data. The guest's own LFB writes to this buffer
+                       take the relaxed path: its SST_status poll already waits
+                       for the ring to drain. */
+                    if (!voodoo->lfb_relax_ignore_fb_writes)
+                        pending_buf += voodoo->pending_fb_writes_buf[read_buf];
                     pending_buf += voodoo->pending_draw_cmds_buf[read_buf];
                 }
 
